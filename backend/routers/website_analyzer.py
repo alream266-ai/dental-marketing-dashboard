@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from database import get_session
 from models.brand import BrandProfile
 from services.brand_extractor import extract_brand_profile
+from services.seo_audit import run_seo_audit
 import json
 
 router = APIRouter()
@@ -45,6 +46,14 @@ async def analyze_website(req: AnalyzeRequest, session: Session = Depends(get_se
             session.commit()
             session.refresh(profile)
             return _serialize(profile)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/seo-audit")
+async def seo_audit(req: AnalyzeRequest):
+    try:
+        return await run_seo_audit(req.url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

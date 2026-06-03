@@ -14,6 +14,10 @@ async def extract_brand_profile(url: str) -> BrandProfile:
     end = response_text.rfind("}") + 1
     data = json.loads(response_text[start:end])
 
+    accepts_new = data.get("accepts_new_patients")
+    if accepts_new is None:
+        accepts_new = True
+
     profile = BrandProfile(
         website_url=url,
         practice_name=data.get("practice_name") or "",
@@ -26,7 +30,7 @@ async def extract_brand_profile(url: str) -> BrandProfile:
         services_json=json.dumps(data.get("services") or []),
         value_props_json=json.dumps(data.get("value_props") or []),
         doctor_names_json=json.dumps(data.get("doctor_names") or []),
-        accepts_new_patients=data.get("accepts_new_patients", True),
+        accepts_new_patients=accepts_new,
         hours_summary=data.get("hours_summary") or "",
         raw_content=raw_content[:5000],
     )

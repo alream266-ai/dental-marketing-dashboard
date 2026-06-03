@@ -1,5 +1,10 @@
 [build]
 builder = "NIXPACKS"
+# Install the headless Chromium browser used by the SEO audit's rendered-DOM
+# mode. The OS libraries it needs are declared as aptPkgs in nixpacks.toml, so
+# --with-deps is not required here. If this is ever skipped, the audit falls
+# back to static HTML.
+buildCommand = "python -m playwright install chromium"
 
 [deploy]
 startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"

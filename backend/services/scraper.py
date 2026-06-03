@@ -5,8 +5,15 @@ from typing import Optional
 
 
 async def scrape_website(url: str, max_pages: int = 8) -> str:
+    # Use a realistic browser User-Agent and headers. Custom/bot UAs are
+    # frequently rejected with 403 by site firewalls (e.g. Cloudflare).
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; DentalMarketingBot/1.0)"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                  "image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
     }
     visited = set()
     all_text = []
@@ -23,6 +30,13 @@ async def scrape_website(url: str, max_pages: int = 8) -> str:
             try:
                 resp = await client.get(current_url)
                 if resp.status_code != 200:
+                    # Surface a clear error for the entry page so the user
+                    # isn't left with a silently empty brand profile.
+                    if current_url == url:
+                        raise RuntimeError(
+                            f"Could not fetch {url} (HTTP {resp.status_code}). "
+                            "The site may be blocking automated requests."
+                        )
                     continue
                 soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -42,6 +56,16 @@ async def scrape_website(url: str, max_pages: int = 8) -> str:
                             if any(k in path for k in ["about", "service", "team", "contact", "treatment", "dental", "care"]):
                                 to_visit.append(href)
             except Exception:
+                # Fail loudly if even the entry page can't be processed;
+                # otherwise skip the problematic sub-page and keep going.
+                if current_url == url:
+                    raise
                 continue
+
+    if not all_text:
+        raise RuntimeError(
+            f"No readable content found at {url}. The site may require "
+            "JavaScript to render or be blocking automated requests."
+        )
 
     return "\n\n".join(all_text)[:30000]
