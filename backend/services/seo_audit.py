@@ -29,11 +29,18 @@ _STATUS_SCORE = {"pass": 1.0, "warn": 0.5, "fail": 0.0}
 
 
 async def _fetch_rendered(url: str):
-    """Render the page in headless Chromium and return the post-JavaScript DOM.
+    """Fetch the page DOM, preferring fully-rendered (post-JavaScript) HTML.
 
-    Returns (final_url, status_code, html, content_bytes, render_mode).
-    Falls back to a plain httpx GET if the browser is unavailable.
+    Strategy, in order:
+      1. Local headless Chromium via Playwright (used in dev / on Railway).
+      2. A remote headless-browser API such as Browserless, if configured
+         (works on serverless hosts like Vercel where local Chromium can't run).
+      3. A plain httpx GET of the raw HTML (no JavaScript executed).
+
+    Returns (final_url, status_code, html, content_bytes, render_mode) where
+    render_mode is "rendered" (1 or 2) or "static" (3).
     """
+    # 1) Local Chromium.
     try:
         from playwright.async_api import async_playwright
 
@@ -51,11 +58,31 @@ async def _fetch_rendered(url: str):
             await browser.close()
             return final_url, status, html, len(html.encode("utf-8")), "rendered"
     except Exception:
-        # Fallback: raw HTML without JavaScript execution.
-        async with httpx.AsyncClient(headers=BROWSER_HEADERS, timeout=25,
-                                     follow_redirects=True) as client:
-            resp = await client.get(url)
-        return str(resp.url), resp.status_code, resp.text, len(resp.content), "static"
+        pass
+
+    # 2) Remote headless browser (Browserless).
+    from config import get_settings
+    settings = get_settings()
+    if settings.browserless_api_key:
+        try:
+            endpoint = f"{settings.browserless_url.rstrip('/')}/content"
+            async with httpx.AsyncClient(timeout=45) as client:
+                resp = await client.post(
+                    endpoint,
+                    params={"token": settings.browserless_api_key},
+                    json={"url": url, "gotoOptions": {"waitUntil": "networkidle2"}},
+                )
+            if resp.status_code == 200 and resp.text:
+                html = resp.text
+                return url, 200, html, len(html.encode("utf-8")), "rendered"
+        except Exception:
+            pass
+
+    # 3) Static HTML.
+    async with httpx.AsyncClient(headers=BROWSER_HEADERS, timeout=25,
+                                 follow_redirects=True) as client:
+        resp = await client.get(url)
+    return str(resp.url), resp.status_code, resp.text, len(resp.content), "static"
 
 
 def _check(category, label, status, detail, weight=1.0, recommendation=""):
